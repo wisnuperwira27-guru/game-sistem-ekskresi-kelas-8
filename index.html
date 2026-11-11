@@ -1,0 +1,520 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Bio-Jelajah 3D: Misi Ekskresi</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Three.js -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Rajdhani:wght@500;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            background-color: #050510;
+            font-family: 'Rajdhani', sans-serif;
+            color: #e0f2fe;
+        }
+
+        h1, h2, h3, .hud-text {
+            font-family: 'Orbitron', sans-serif;
+        }
+
+        #game-container {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            z-index: 1;
+        }
+
+        #ui-layer {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            z-index: 10;
+            pointer-events: none; /* Let clicks pass through unless on an element */
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .screen {
+            background: rgba(10, 15, 30, 0.9);
+            border: 2px solid #0ea5e9;
+            border-radius: 16px;
+            box-shadow: 0 0 30px rgba(14, 165, 233, 0.4), inset 0 0 20px rgba(14, 165, 233, 0.2);
+            padding: 2rem;
+            max-width: 800px;
+            width: 90%;
+            max-height: 85vh;
+            overflow-y: auto;
+            pointer-events: auto;
+            display: none;
+            backdrop-filter: blur(10px);
+        }
+
+        .screen.active {
+            display: flex;
+            flex-direction: column;
+        }
+
+        /* Custom Scrollbar */
+        .screen::-webkit-scrollbar { width: 8px; }
+        .screen::-webkit-scrollbar-track { background: rgba(0,0,0,0.5); border-radius: 4px; }
+        .screen::-webkit-scrollbar-thumb { background: #0ea5e9; border-radius: 4px; }
+
+        .btn {
+            background: linear-gradient(90deg, #0284c7, #0369a1);
+            color: white;
+            border: 1px solid #38bdf8;
+            padding: 10px 24px;
+            border-radius: 8px;
+            font-family: 'Orbitron', sans-serif;
+            font-weight: bold;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            box-shadow: 0 0 10px rgba(2, 132, 199, 0.5);
+            pointer-events: auto;
+        }
+
+        .btn:hover {
+            background: linear-gradient(90deg, #0369a1, #075985);
+            box-shadow: 0 0 20px rgba(56, 189, 248, 0.8);
+            transform: scale(1.05);
+        }
+
+        /* HUD Elements */
+        #hud {
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            pointer-events: none;
+            display: none;
+        }
+        .hud-panel {
+            position: absolute;
+            background: rgba(0, 30, 50, 0.7);
+            border: 1px solid #0ea5e9;
+            padding: 10px 20px;
+            border-radius: 8px;
+            box-shadow: 0 0 15px rgba(14, 165, 233, 0.5);
+        }
+        #score-panel { top: 20px; left: 20px; }
+        #health-panel { top: 20px; right: 20px; }
+        #crosshair {
+            position: absolute;
+            top: 50%; left: 50%;
+            width: 40px; height: 40px;
+            transform: translate(-50%, -50%);
+            border: 2px solid rgba(56, 189, 248, 0.5);
+            border-radius: 50%;
+            pointer-events: none;
+        }
+        #crosshair::before, #crosshair::after {
+            content: ''; position: absolute; background: rgba(56, 189, 248, 0.8);
+        }
+        #crosshair::before { top: -10px; left: 18px; width: 2px; height: 10px; box-shadow: 0 50px 0 rgba(56,189,248,0.8); }
+        #crosshair::after { left: -10px; top: 18px; width: 10px; height: 2px; box-shadow: 50px 0 0 rgba(56,189,248,0.8); }
+
+        /* Scanning overlay effect */
+        .scanlines {
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.25) 50%), linear-gradient(90deg, rgba(255, 0, 0, 0.06), rgba(0, 255, 0, 0.02), rgba(0, 0, 255, 0.06));
+            background-size: 100% 4px, 3px 100%;
+            pointer-events: none;
+            z-index: 2;
+            opacity: 0.4;
+        }
+    </style>
+</head>
+<body>
+
+<!-- Three.js Canvas Container -->
+<div id="game-container"></div>
+<div class="scanlines"></div>
+
+<!-- UI Layer -->
+<div id="ui-layer">
+    
+    <!-- MAIN MENU & GDD -->
+    <div id="screen-main" class="screen active">
+        <h1 class="text-4xl text-center text-cyan-400 mb-2 drop-shadow-[0_0_10px_rgba(34,211,238,0.8)]">BIO-JELAJAH 3D</h1>
+        <h2 class="text-xl text-center text-blue-300 mb-6">Misi Ekskresi (The Excretory Expedition)</h2>
+        
+        <div class="space-y-4 text-gray-300 text-sm mb-6">
+            <div class="border border-cyan-800 p-4 rounded bg-cyan-950/50">
+                <h3 class="text-lg text-cyan-400 mb-2">1. Game Design Document (GDD)</h3>
+                <p><strong>Konsep:</strong> Pemain mengendalikan "Nano-X", kapal selam berukuran nano berteknologi tinggi di dalam tubuh manusia (Sudut pandang Third-Person).</p>
+                <p class="mt-2"><strong>Alur 4 Zona Level 3D:</strong></p>
+                <ul class="list-disc pl-5 mt-1 space-y-1">
+                    <li><span class="text-blue-400 font-bold">Ginjal (Ngarai Nefron):</span> 3D Tube Runner. Tangkap Air/Glukosa (Biru/Emas), Hindari/Tembak Urea (Hijau).</li>
+                    <li><span class="text-red-400 font-bold">Hati (Pabrik Detoks):</span> Puzzle Lab. Rombak sel darah merah mati dan amonia.</li>
+                    <li><span class="text-gray-200 font-bold">Paru-paru (Gua Alveolus):</span> Zero-G Platforming. Tukar CO2 dengan Oksigen.</li>
+                    <li><span class="text-orange-300 font-bold">Kulit (Terowongan Pori):</span> Manajemen Suhu. Buka katup keringat.</li>
+                </ul>
+            </div>
+
+            <div class="border border-cyan-800 p-4 rounded bg-cyan-950/50">
+                <h3 class="text-lg text-cyan-400 mb-2">2. Naskah Voice Over (Cutscene Ginjal)</h3>
+                <p class="italic text-gray-400 mb-2">Visual: Kamera men-zoom pinggang manusia holografik, menembus kulit, masuk ke arteri ginjal yang berdenyut, hingga terlihat glomerulus yang bersinar.</p>
+                <p><strong class="text-cyan-300">Holo-Doc (AI Asisten):</strong> "Sistem tubuh dalam kondisi waspada. Penumpukan toksin terdeteksi di aliran darah."</p>
+                <p><strong class="text-cyan-300">Holo-Doc:</strong> "Kapten, kita telah disuntikkan dan sekarang memasuki Arteri Renalis. Tujuan kita: Ngarai Nefron di dalam Ginjal. Ginjal berfungsi sebagai pabrik penyaring utama. Tugas Anda adalah memulihkan zat berharga seperti air dan glukosa kembali ke tubuh, dan membiarkan urea racun mengalir ke saluran pembuangan urin. Aktifkan perisai, siapkan Tractor Beam. Semoga berhasil."</p>
+            </div>
+
+            <div class="border border-cyan-800 p-4 rounded bg-cyan-950/50">
+                <h3 class="text-lg text-cyan-400 mb-2">3. Rekomendasi Tech Stack</h3>
+                <p><strong>Versi Web (Prototipe ini):</strong> HTML5, WebGL (Three.js), CSS (Tailwind). Ringan dan jalan di browser tanpa install.</p>
+                <p><strong>Versi Full PC/Mobile:</strong> Unity 3D (C#) atau Unreal Engine 5 (Blueprints). Cocok untuk material organik realistis (Subsurface Scattering) dan particle effects kompleks.</p>
+            </div>
+        </div>
+
+        <button onclick="startSimulation()" class="btn w-full py-4 text-xl">Mulai Simulasi 3D (Level Ginjal)</button>
+    </div>
+
+    <!-- HUD OVERLAY (DURING GAME) -->
+    <div id="hud">
+        <div id="score-panel" class="hud-panel hud-text text-cyan-400 text-xl">
+            NUTRISI TERSERAP: <span id="score-val" class="font-bold text-white">0</span>%
+        </div>
+        <div id="health-panel" class="hud-panel hud-text text-green-400 text-xl">
+            INTEGRITAS LAMBUNG KAPAL: <span id="health-val" class="font-bold text-white">100</span>%
+        </div>
+        <div id="crosshair"></div>
+        <div class="absolute bottom-10 w-full text-center hud-text text-gray-400 text-sm tracking-widest pointer-events-none">
+            GUNAKAN KURSOR/SENTUHAN UNTUK MENGARAHKAN NANO-X
+        </div>
+    </div>
+
+    <!-- QUIZ / EVALUATION DECK -->
+    <div id="screen-quiz" class="screen">
+        <h2 class="text-3xl text-center text-cyan-400 mb-2">Hologram Deck: Evaluasi</h2>
+        <p class="text-center text-gray-300 mb-6">Misi Penyaringan Selesai. Holo-Doc mendata laporan Anda.</p>
+        
+        <div class="bg-cyan-950/80 border border-cyan-600 p-6 rounded-lg mb-6">
+            <h3 class="text-xl text-white mb-4" id="quiz-q">Berdasarkan misi tadi, zat apa yang sengaja kita biarkan terbuang karena bersifat racun bagi tubuh?</h3>
+            <div class="space-y-3" id="quiz-options">
+                <button class="w-full text-left bg-cyan-900/50 border border-cyan-700 p-3 rounded text-gray-200 hover:bg-cyan-700 transition" onclick="answerQuiz(false)">A. Air (H2O)</button>
+                <button class="w-full text-left bg-cyan-900/50 border border-cyan-700 p-3 rounded text-gray-200 hover:bg-cyan-700 transition" onclick="answerQuiz(true)">B. Urea & Amonia</button>
+                <button class="w-full text-left bg-cyan-900/50 border border-cyan-700 p-3 rounded text-gray-200 hover:bg-cyan-700 transition" onclick="answerQuiz(false)">C. Glukosa (Gula)</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- MESSAGE BOX -->
+    <div id="msg-box" class="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 bg-slate-900 border-2 border-cyan-500 p-6 rounded-xl text-center shadow-2xl hidden" style="pointer-events: auto; z-index: 50;">
+        <h3 id="msg-title" class="text-2xl text-cyan-400 mb-2 font-bold font-['Orbitron']">Pesan</h3>
+        <p id="msg-desc" class="text-gray-300 mb-6">Deskripsi pesan.</p>
+        <button onclick="closeMsgBox()" class="btn">Mengerti</button>
+    </div>
+
+</div>
+
+<script>
+    // --- UI LOGIC ---
+    function showScreen(id) {
+        document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+        if(id) document.getElementById(id).classList.add('active');
+    }
+
+    function showHUD(show) {
+        document.getElementById('hud').style.display = show ? 'block' : 'none';
+    }
+
+    function showMsgBox(title, desc, callback) {
+        document.getElementById('msg-title').innerText = title;
+        document.getElementById('msg-desc').innerText = desc;
+        document.getElementById('msg-box').style.display = 'block';
+        window.msgCallback = callback;
+    }
+
+    function closeMsgBox() {
+        document.getElementById('msg-box').style.display = 'none';
+        if(window.msgCallback) window.msgCallback();
+    }
+
+    // --- THREE.JS ENGINE SETUP ---
+    const container = document.getElementById('game-container');
+    const scene = new THREE.Scene();
+    
+    // Add Fog for depth inside the tube
+    scene.fog = new THREE.FogExp2(0x2a0010, 0.003);
+
+    const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.setPixelRatio(window.devicePixelRatio);
+    container.appendChild(renderer.domElement);
+
+    // Lighting (Medical/Sci-fi vibe)
+    const ambientLight = new THREE.AmbientLight(0xffffff, 0.4);
+    scene.add(ambientLight);
+    
+    const pointLight = new THREE.PointLight(0x0ea5e9, 2, 100);
+    pointLight.position.set(0, 0, 10);
+    scene.add(pointLight);
+
+    const redLight = new THREE.PointLight(0xff0044, 1, 200);
+    redLight.position.set(0, 0, -50);
+    scene.add(redLight);
+
+    // --- GAME OBJECTS ---
+    // 1. The Tube (Kidney Tubule)
+    const tubeRadius = 30;
+    const tubeLength = 600;
+    const tubeGeo = new THREE.CylinderGeometry(tubeRadius, tubeRadius, tubeLength, 32, 10, true);
+    // Make it look organic and fleshy but high-tech
+    const tubeMat = new THREE.MeshPhongMaterial({ 
+        color: 0x4a0515, 
+        emissive: 0x1a0005,
+        side: THREE.BackSide, 
+        wireframe: true,
+        transparent: true,
+        opacity: 0.3
+    });
+    const tube = new THREE.Mesh(tubeGeo, tubeMat);
+    tube.rotation.x = Math.PI / 2;
+    scene.add(tube);
+
+    // Grid helper inside tube for movement illusion
+    const gridHelperGeo = new THREE.CylinderGeometry(tubeRadius-1, tubeRadius-1, tubeLength, 16, 40, true);
+    const gridHelperMat = new THREE.MeshBasicMaterial({ color: 0xff1144, wireframe: true, transparent: true, opacity: 0.15 });
+    const gridTube = new THREE.Mesh(gridHelperGeo, gridHelperMat);
+    gridTube.rotation.x = Math.PI / 2;
+    scene.add(gridTube);
+
+    // 2. Nano-X Submarine (Player)
+    const shipGroup = new THREE.Group();
+    
+    // Core body
+    const shipGeo = new THREE.ConeGeometry(2, 6, 8);
+    shipGeo.rotateX(Math.PI / 2); // Point forward
+    const shipMat = new THREE.MeshStandardMaterial({ color: 0x0ea5e9, metalness: 0.8, roughness: 0.2 });
+    const shipMesh = new THREE.Mesh(shipGeo, shipMat);
+    shipGroup.add(shipMesh);
+
+    // Engine glow
+    const engineGeo = new THREE.SphereGeometry(1, 16, 16);
+    const engineMat = new THREE.MeshBasicMaterial({ color: 0x00ffff });
+    const engineGlow = new THREE.Mesh(engineGeo, engineMat);
+    engineGlow.position.z = 3;
+    shipGroup.add(engineGlow);
+
+    shipGroup.position.set(0, 0, 20); // Near camera
+    scene.add(shipGroup);
+
+    // Position Camera slightly behind and above ship
+    camera.position.set(0, 5, 40);
+    camera.lookAt(0, 0, -100);
+
+    // 3. Molecules (Obstacles/Collectibles)
+    let molecules = [];
+    const moleculeGeo = new THREE.SphereGeometry(1.5, 16, 16);
+    
+    const matGood = new THREE.MeshStandardMaterial({ color: 0x38bdf8, emissive: 0x0284c7, roughness: 0.1 }); // Water/Glucose
+    const matBad = new THREE.MeshStandardMaterial({ color: 0x4ade80, emissive: 0x166534, roughness: 0.5 }); // Urea/Toxin
+
+    function spawnMolecule() {
+        if(!isGameRunning) return;
+        const isGood = Math.random() > 0.4;
+        const mesh = new THREE.Mesh(moleculeGeo, isGood ? matGood : matBad);
+        
+        // Random position inside the tube
+        const angle = Math.random() * Math.PI * 2;
+        const radius = Math.random() * (tubeRadius - 5);
+        
+        mesh.position.x = Math.cos(angle) * radius;
+        mesh.position.y = Math.sin(angle) * radius;
+        mesh.position.z = -300; // Spawn far away
+
+        mesh.userData = { isGood: isGood, speed: Math.random() * 1.5 + 2 };
+        
+        scene.add(mesh);
+        molecules.push(mesh);
+    }
+
+    // --- GAME STATE & INPUT ---
+    let isGameRunning = false;
+    let score = 0;
+    let health = 100;
+    let targetX = 0;
+    let targetY = 0;
+    let animId;
+
+    // Mouse/Touch tracking for ship movement
+    const pointer = new THREE.Vector2();
+
+    function onPointerMove(event) {
+        if (!isGameRunning) return;
+        
+        let clientX = event.clientX;
+        let clientY = event.clientY;
+        
+        if (event.touches) {
+            clientX = event.touches[0].clientX;
+            clientY = event.touches[0].clientY;
+        }
+
+        // Normalize pointer coordinates (-1 to +1)
+        pointer.x = (clientX / window.innerWidth) * 2 - 1;
+        pointer.y = -(clientY / window.innerHeight) * 2 + 1;
+
+        // Map pointer to tube coordinates (limit range so it stays inside tube)
+        const maxMove = tubeRadius - 3;
+        targetX = pointer.x * maxMove;
+        targetY = pointer.y * maxMove;
+    }
+
+    window.addEventListener('mousemove', onPointerMove);
+    window.addEventListener('touchmove', onPointerMove, {passive: false});
+
+    window.addEventListener('resize', () => {
+        camera.aspect = window.innerWidth / window.innerHeight;
+        camera.updateProjectionMatrix();
+        renderer.setSize(window.innerWidth, window.innerHeight);
+    });
+
+    // --- GAME LOGIC ---
+    function startSimulation() {
+        showScreen(null);
+        
+        // Simulating the cutscene with a message box for now
+        showMsgBox(
+            "Transisi Sistem", 
+            "Memulai Injeksi Nano-X...\nVisual Makro ke Mikro diaktifkan.\nMemasuki Ngarai Nefron.", 
+            () => {
+                showHUD(true);
+                resetGame();
+                isGameRunning = true;
+                animate();
+                // Start spawning molecules
+                setInterval(spawnMolecule, 800);
+            }
+        );
+    }
+
+    function resetGame() {
+        score = 0;
+        health = 100;
+        updateHUD();
+        
+        // Clear existing molecules
+        molecules.forEach(m => scene.remove(m));
+        molecules = [];
+        
+        shipGroup.position.set(0, 0, 20);
+        targetX = 0;
+        targetY = 0;
+    }
+
+    function updateHUD() {
+        document.getElementById('score-val').innerText = score;
+        document.getElementById('health-val').innerText = health;
+        const hpPanel = document.getElementById('health-panel');
+        if(health < 40) hpPanel.classList.add('text-red-500');
+        else hpPanel.classList.remove('text-red-500');
+    }
+
+    function triggerQuiz() {
+        isGameRunning = false;
+        showHUD(false);
+        showScreen('screen-quiz');
+    }
+
+    function answerQuiz(isCorrect) {
+        if(isCorrect) {
+            showMsgBox("Tepat Sekali!", "Urea dan amonia adalah limbah beracun yang harus disaring dan dibuang menjadi urin. Misi Selesai!\n\n(Area Level 2: Paru-paru akan terbuka di update selanjutnya)", () => {
+                showScreen('screen-main');
+            });
+        } else {
+            showMsgBox("Analisa Salah", "Holo-Doc merekomendasikan Anda mempelajari ulang. Coba jawab lagi.", null);
+        }
+    }
+
+    // Main Game Loop
+    function animate() {
+        if (!isGameRunning) return;
+        animId = requestAnimationFrame(animate);
+
+        // 1. Move Tube texture to simulate speed
+        gridTube.material.map && (gridTube.material.map.offset.y -= 0.05);
+
+        // 2. Smoothly interpolate ship position towards target (Mouse)
+        shipGroup.position.x += (targetX - shipGroup.position.x) * 0.1;
+        shipGroup.position.y += (targetY - shipGroup.position.y) * 0.1;
+
+        // Add slight banking (rotation) based on movement
+        shipGroup.rotation.z = (targetX - shipGroup.position.x) * -0.05;
+        shipGroup.rotation.x = (targetY - shipGroup.position.y) * 0.05;
+        
+        // Camera slightly follows ship
+        camera.position.x = shipGroup.position.x * 0.3;
+        camera.position.y = 5 + shipGroup.position.y * 0.3;
+
+        // 3. Update Molecules & Collision
+        for (let i = molecules.length - 1; i >= 0; i--) {
+            let m = molecules[i];
+            m.position.z += m.userData.speed;
+            
+            // Spin molecules
+            m.rotation.x += 0.05;
+            m.rotation.y += 0.05;
+
+            // Collision Check (Simple distance check)
+            let dist = shipGroup.position.distanceTo(m.position);
+            if (dist < 4) { // Hit radius
+                scene.remove(m);
+                molecules.splice(i, 1);
+                
+                if (m.userData.isGood) {
+                    score += 10;
+                    // Flash ship light blue
+                    pointLight.color.setHex(0x00ffff);
+                    setTimeout(() => pointLight.color.setHex(0x0ea5e9), 100);
+                } else {
+                    health -= 20;
+                    // Flash screen red (simulate via light)
+                    pointLight.color.setHex(0xff0000);
+                    setTimeout(() => pointLight.color.setHex(0x0ea5e9), 200);
+                }
+                
+                updateHUD();
+                
+                // Win/Loss Condition
+                if (health <= 0) {
+                    isGameRunning = false;
+                    showMsgBox("Misi Gagal", "Integritas lambung kapal hancur akibat terlalu banyak menabrak racun Urea. Kembali ke pangkalan.", () => {
+                        showScreen('screen-main');
+                    });
+                } else if (score >= 100) {
+                    isGameRunning = false;
+                    showMsgBox("Target Nutrisi Tercapai!", "Bagus Kapten! Anda berhasil menyelamatkan air dan glukosa. Memulai sekuens ekstraksi.", () => {
+                        triggerQuiz();
+                    });
+                }
+                continue;
+            }
+
+            // Remove if passed behind camera
+            if (m.position.z > 30) {
+                scene.remove(m);
+                molecules.splice(i, 1);
+            }
+        }
+
+        renderer.render(scene, camera);
+    }
+
+    // Initial render call to show background behind UI
+    renderer.render(scene, camera);
+
+</script>
+</body>
+</html>
